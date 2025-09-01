@@ -1,14 +1,39 @@
 import { useState, useEffect } from 'react';
 import { 
-  getUserExamStats, 
-  getAllUserExamStats, 
-  getUserTestAttempts,
-  getExamLeaderboard,
-  storeTestAttempt,
-  type ExamStatsData,
-  type TestAttempt
-} from '@/lib/firebaseExamStats';
+  getExamStats, 
+  getTestResults, 
+  getUserProfile, 
+  saveTestResult,
+  type ExamStats,
+  type TestResult,
+  type UserProfile 
+} from '@/lib/localStats';
 import { useAuth } from './useAuth';
+
+// Legacy interface to maintain compatibility
+export interface ExamStatsData {
+  examId: string;
+  totalTests: number;
+  averageScore: number;
+  bestScore: number;
+  worstScore?: number;
+  totalTimeTaken?: number;
+  lastTestDate: Date;
+  streak: number;
+  rank?: number;
+  percentile?: number;
+}
+
+export interface TestAttempt {
+  id: string;
+  examId: string;
+  score: number;
+  totalQuestions: number;
+  correctAnswers: number;
+  timeTaken: number;
+  completedAt: Date;
+  answers?: any;
+}
 
 export const useExamStats = (examId?: string) => {
   const { getUserId } = useAuth();
@@ -18,17 +43,45 @@ export const useExamStats = (examId?: string) => {
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // Convert ExamStats to legacy ExamStatsData format
+  const convertToLegacyFormat = (examStats: ExamStats[]): ExamStatsData[] => {
+    return examStats.map(stat => ({
+      examId: stat.examId,
+      totalTests: stat.totalTests,
+      averageScore: stat.averageScore,
+      bestScore: stat.bestScore,
+      worstScore: stat.worstScore,
+      totalTimeTaken: stat.totalTimeTaken,
+      lastTestDate: stat.lastTestDate,
+      streak: stat.streak,
+      rank: stat.rank,
+      percentile: stat.percentile
+    }));
+  };
+
+  // Convert TestResult to legacy TestAttempt format
+  const convertAttemptsToLegacyFormat = (results: TestResult[]): TestAttempt[] => {
+    return results.map(result => ({
+      id: result.id,
+      examId: result.examId,
+      score: result.score,
+      totalQuestions: result.totalQuestions,
+      correctAnswers: result.correctAnswers,
+      timeTaken: result.timeTaken,
+      completedAt: result.completedAt,
+      answers: result.answers
+    }));
+  };
+
   // Load stats for a specific exam
   const loadExamStats = async (targetExamId: string) => {
-    const userId = getUserId();
-    if (!userId) return;
+    if (!getUserId()) return;
 
     setLoading(true);
     try {
-      const result = await getUserExamStats(userId, targetExamId);
-      if (result.success) {
-        setStats(result.data);
-      }
+      const examStats = getExamStats(targetExamId);
+      const legacyStats = convertToLegacyFormat(examStats);
+      setStats(legacyStats[0] || null);
     } catch (error) {
       console.error('Error loading exam stats:', error);
     } finally {
@@ -38,15 +91,13 @@ export const useExamStats = (examId?: string) => {
 
   // Load all user stats (for dashboard)
   const loadAllStats = async () => {
-    const userId = getUserId();
-    if (!userId) return;
+    if (!getUserId()) return;
 
     setLoading(true);
     try {
-      const result = await getAllUserExamStats(userId);
-      if (result.success) {
-        setAllStats(result.data);
-      }
+      const examStats = getExamStats();
+      const legacyStats = convertToLegacyFormat(examStats);
+      setAllStats(legacyStats);
     } catch (error) {
       console.error('Error loading all stats:', error);
     } finally {
@@ -54,28 +105,37 @@ export const useExamStats = (examId?: string) => {
     }
   };
 
+  // Get specific exam stat by ID
+  const getExamStatById = (examId: string): ExamStatsData | null => {
+    return allStats.find(stat => stat.examId === examId) || null;
+  };
+
   // Load test attempts for an exam
   const loadTestAttempts = async (targetExamId: string, limit = 20) => {
-    const userId = getUserId();
-    if (!userId) return;
+    if (!getUserId()) return;
 
     try {
-      const result = await getUserTestAttempts(userId, targetExamId, limit);
-      if (result.success) {
-        setAttempts(result.data);
-      }
+      const results = getTestResults(targetExamId).slice(0, limit);
+      const legacyAttempts = convertAttemptsToLegacyFormat(results);
+      setAttempts(legacyAttempts);
     } catch (error) {
       console.error('Error loading test attempts:', error);
     }
   };
 
-  // Load leaderboard for an exam
+  // Load leaderboard for an exam (simulate with local data)
   const loadLeaderboard = async (targetExamId: string, limit = 50) => {
     try {
-      const result = await getExamLeaderboard(targetExamId, limit);
-      if (result.success) {
-        setLeaderboard(result.data);
-      }
+      // Simulate leaderboard data
+      const mockLeaderboard = Array.from({ length: limit }, (_, i) => ({
+        rank: i + 1,
+        phone: `****${Math.floor(1000 + Math.random() * 9000)}`,
+        score: Math.floor(95 - (i * 0.8)),
+        examId: targetExamId,
+        completedAt: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000)
+      }));
+      
+      setLeaderboard(mockLeaderboard);
     } catch (error) {
       console.error('Error loading leaderboard:', error);
     }
@@ -88,35 +148,51 @@ export const useExamStats = (examId?: string) => {
     totalQuestions: number,
     correctAnswers: number,
     timeTaken: number,
-    answers: any
+    answers: any,
+    sectionId = 'mock',
+    testId = 'mock-test',
+    topicId?: string
   ) => {
-    const userId = getUserId();
-    if (!userId) return { success: false, error: 'User not authenticated' };
+    if (!getUserId()) return { success: false, error: 'User not authenticated' };
 
     try {
-      const result = await storeTestAttempt(
-        userId,
-        targetExamId,
-        score,
+      const testResultId = saveTestResult({
+        examId: targetExamId,
+        sectionId,
+        testId,
+        topicId,
+        score: Math.round((correctAnswers / totalQuestions) * 100),
         totalQuestions,
         correctAnswers,
+        wrongAnswers: totalQuestions - correctAnswers - (answers.skipped || 0),
+        skippedAnswers: answers.skipped || 0,
         timeTaken,
-        answers
-      );
+        totalTime: timeTaken, // Assuming they used full time
+        answers: answers.details || []
+      });
 
-      if (result.success) {
-        // Refresh stats after submitting
-        if (examId === targetExamId) {
-          await loadExamStats(targetExamId);
-        }
-        await loadTestAttempts(targetExamId);
+      // Refresh stats after submitting
+      if (examId === targetExamId) {
+        await loadExamStats(targetExamId);
       }
+      await loadTestAttempts(targetExamId);
+      await loadAllStats();
 
-      return result;
+      return { success: true, data: { id: testResultId } };
     } catch (error) {
       console.error('Error submitting test attempt:', error);
       return { success: false, error: 'Failed to submit test attempt' };
     }
+  };
+
+  // Get user profile
+  const getProfile = (): UserProfile | null => {
+    return getUserProfile();
+  };
+
+  // Get test history
+  const getTestHistory = (examId?: string): TestResult[] => {
+    return getTestResults(examId);
   };
 
   // Load initial data
@@ -127,6 +203,17 @@ export const useExamStats = (examId?: string) => {
     }
   }, [examId]);
 
+  // Synchronous version for immediate access
+  const loadAllStatsSync = () => {
+    try {
+      const examStats = getExamStats();
+      const legacyStats = convertToLegacyFormat(examStats);
+      setAllStats(legacyStats);
+    } catch (error) {
+      console.error('Error loading all stats:', error);
+    }
+  };
+
   return {
     stats,
     allStats,
@@ -134,10 +221,13 @@ export const useExamStats = (examId?: string) => {
     leaderboard,
     loading,
     loadExamStats,
-    loadAllStats,
+    loadAllStats: loadAllStatsSync, // Use sync version for immediate loading
     loadTestAttempts,
     loadLeaderboard,
     submitTestAttempt,
-    refreshStats: () => examId && loadExamStats(examId)
+    refreshStats: () => examId && loadExamStats(examId),
+    getExamStatById,
+    getProfile,
+    getTestHistory
   };
 };

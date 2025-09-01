@@ -129,12 +129,16 @@ const TestInterface = () => {
           correct,
           timeTaken,
           {
-            sectionId,
-            testType,
-            topic,
-            answers,
-            incorrect
-          }
+            details: questions.map((question, index) => ({
+              questionId: question.id,
+              selectedOption: answers[index] ?? -1,
+              isCorrect: answers[index] === question.correct
+            })),
+            skipped: questions.length - answered
+          },
+          sectionId!,
+          testType!,
+          topic
         );
         console.log('Test attempt submitted successfully');
       } catch (error) {

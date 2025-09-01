@@ -37,13 +37,15 @@ const ExamDashboard = () => {
   const { examId } = useParams();
   const navigate = useNavigate();
   const { user, isAuthenticated, isLoading } = useAuth();
-  const { allStats, loadAllStats } = useExamStats();
+  const { allStats, loadAllStats, getExamStatById } = useExamStats();
   const [userStats, setUserStats] = useState({
     totalTests: 0,
     avgScore: 0,
     bestScore: 0,
     streak: 0,
-    lastActive: null
+    rank: 0,
+    percentile: 0,
+    lastActive: null as Date | null
   });
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
@@ -60,31 +62,37 @@ const ExamDashboard = () => {
       return;
     }
 
-    // Load exam stats
+    // Load exam stats immediately
     if (examId) {
       loadAllStats();
-
+      
       // Find stats for current exam
-      const currentExamStats = allStats.find(stat => stat.examId === examId);
-      if (currentExamStats) {
-        setUserStats({
-          totalTests: currentExamStats.totalTests,
-          avgScore: currentExamStats.averageScore,
-          bestScore: currentExamStats.bestScore,
-          streak: 0,
-          lastActive: new Date(currentExamStats.lastTestDate)
-        });
-      } else {
-        setUserStats({
-          totalTests: 0,
-          avgScore: 0,
-          bestScore: 0,
-          streak: 0,
-          lastActive: null
-        });
-      }
+      setTimeout(() => {
+        const currentExamStats = getExamStatById(examId);
+        if (currentExamStats) {
+          setUserStats({
+            totalTests: currentExamStats.totalTests,
+            avgScore: currentExamStats.averageScore,
+            bestScore: currentExamStats.bestScore,
+            streak: currentExamStats.streak,
+            rank: currentExamStats.rank || 0,
+            percentile: currentExamStats.percentile || 0,
+            lastActive: currentExamStats.lastTestDate
+          });
+        } else {
+          setUserStats({
+            totalTests: 0,
+            avgScore: 0,
+            bestScore: 0,
+            streak: 0,
+            rank: 0,
+            percentile: 0,
+            lastActive: null
+          });
+        }
+      }, 100);
     }
-  }, [examId, userPhone, navigate, isAuthenticated, allStats, isLoading]);
+  }, [examId, userPhone, navigate, isAuthenticated, isLoading, loadAllStats, getExamStatById]);
 
   if (isLoading) {
     return (
@@ -154,7 +162,7 @@ const ExamDashboard = () => {
 
       <div className="container mx-auto px-4 py-8">
         {/* Stats Overview */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
           <Card className="gradient-card border-0">
             <CardContent className="p-4 text-center">
               <Trophy className="w-8 h-8 mx-auto mb-2 text-accent" />
@@ -184,6 +192,22 @@ const ExamDashboard = () => {
               <Calendar className="w-8 h-8 mx-auto mb-2 text-warning" />
               <p className="text-2xl font-bold text-foreground">{userStats.streak}</p>
               <p className="text-sm text-muted-foreground">Day Streak</p>
+            </CardContent>
+          </Card>
+
+          <Card className="gradient-card border-0">
+            <CardContent className="p-4 text-center">
+              <Trophy className="w-8 h-8 mx-auto mb-2 text-accent" />
+              <p className="text-2xl font-bold text-foreground">#{userStats.rank}</p>
+              <p className="text-sm text-muted-foreground">Your Rank</p>
+            </CardContent>
+          </Card>
+
+          <Card className="gradient-card border-0">
+            <CardContent className="p-4 text-center">
+              <TrendingUp className="w-8 h-8 mx-auto mb-2 text-primary" />
+              <p className="text-2xl font-bold text-foreground">{userStats.percentile}%</p>
+              <p className="text-sm text-muted-foreground">Percentile</p>
             </CardContent>
           </Card>
         </div>
