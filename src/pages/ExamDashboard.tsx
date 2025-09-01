@@ -36,7 +36,7 @@ const iconMap: { [key: string]: any } = {
 const ExamDashboard = () => {
   const { examId } = useParams();
   const navigate = useNavigate();
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, isLoading } = useAuth();
   const { allStats, loadAllStats } = useExamStats();
   const [userStats, setUserStats] = useState({
     totalTests: 0,
@@ -49,9 +49,11 @@ const ExamDashboard = () => {
   const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
 
   const exam = examConfigs[examId as string];
-  const userPhone = localStorage.getItem("userPhone");
+  const userPhone = user?.phone || localStorage.getItem("userPhone");
 
   useEffect(() => {
+    if (isLoading) return;
+
     // Check if user is authenticated
     if (!isAuthenticated || !userPhone) {
       navigate("/");
@@ -61,7 +63,7 @@ const ExamDashboard = () => {
     // Load exam stats
     if (examId) {
       loadAllStats();
-      
+
       // Find stats for current exam
       const currentExamStats = allStats.find(stat => stat.examId === examId);
       if (currentExamStats) {
@@ -69,7 +71,7 @@ const ExamDashboard = () => {
           totalTests: currentExamStats.totalTests,
           avgScore: currentExamStats.averageScore,
           bestScore: currentExamStats.bestScore,
-          streak: 0, // We can implement streak calculation later
+          streak: 0,
           lastActive: new Date(currentExamStats.lastTestDate)
         });
       } else {
@@ -82,7 +84,18 @@ const ExamDashboard = () => {
         });
       }
     }
-  }, [examId, userPhone, navigate, isAuthenticated, allStats]);
+  }, [examId, userPhone, navigate, isAuthenticated, allStats, isLoading]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!exam) {
     return (
