@@ -5,7 +5,7 @@ import { BookOpen, Clock, Trophy, Users, TrendingUp, Brain } from "lucide-react"
 import { useNavigate } from "react-router-dom";
 import { examConfigs } from "@/config/examConfig";
 import AuthFlow from "@/components/auth/AuthFlow";
-import { getCurrentAuthUser, signOutUser } from "@/lib/firebaseAuth";
+import { useAuth } from "@/hooks/useAuth";
 
 // Icon mapping for dynamic loading
 const iconMap: { [key: string]: any } = {
@@ -22,49 +22,18 @@ const exams = Object.values(examConfigs).map(exam => ({
 }));
 
 const Index = () => {
-  const [isAuthenticated, setIsAuthenticated] = useState(
-    !!localStorage.getItem("userPhone") && !!localStorage.getItem("isAuthenticated")
-  );
   const [showLogin, setShowLogin] = useState(false);
-  const [currentUser, setCurrentUser] = useState<any>(null);
   const navigate = useNavigate();
+  const { user, isAuthenticated, isLoading, logout, refreshUser } = useAuth();
 
-  // Check for existing authentication on app load
-  useEffect(() => {
-    const checkAuth = async () => {
-      const storedPhone = localStorage.getItem("userPhone");
-      const isAuth = localStorage.getItem("isAuthenticated");
-      
-      if (storedPhone && isAuth) {
-        setIsAuthenticated(true);
-        
-        // Try to get user profile from Firebase
-        const user = await getCurrentAuthUser();
-        if (user) {
-          setCurrentUser(user);
-        }
-      }
-    };
-
-    checkAuth();
-  }, []);
-
-  const handleAuthSuccess = () => {
-    setIsAuthenticated(true);
+  const handleAuthSuccess = async () => {
     setShowLogin(false);
-    
     // Refresh user data
-    getCurrentAuthUser().then(user => {
-      if (user) {
-        setCurrentUser(user);
-      }
-    });
+    await refreshUser();
   };
 
   const handleLogout = async () => {
-    await signOutUser();
-    setIsAuthenticated(false);
-    setCurrentUser(null);
+    await logout();
   };
 
   const handleExamSelect = (examId: string) => {
@@ -81,6 +50,17 @@ const Index = () => {
         onSuccess={handleAuthSuccess}
         onBack={() => setShowLogin(false)}
       />
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
     );
   }
 
@@ -104,7 +84,7 @@ const Index = () => {
               <div className="text-right">
                 <p className="text-sm font-medium text-foreground">Welcome!</p>
                 <p className="text-xs text-muted-foreground">
-                  +91 {localStorage.getItem("userPhone")}
+                  +91 {user?.phone || localStorage.getItem("userPhone")}
                 </p>
               </div>
               <Button variant="outline" size="sm" onClick={handleLogout}>
